@@ -1,91 +1,124 @@
-import chalk from 'chalk'
-import logger from 'loglevel'
-import { existsSync, writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
-import { userInfo } from 'node:os'
-import { ENTER, createFolderIfNotExists } from '../utils.ts'
-import { PROGRAM_FILE_EXTENSION, TEST_FILE_EXTENSION, WOLLOK_FILE_EXTENSION } from 'wollok-ts'
-import { execSync } from 'node:child_process'
-import process from 'node:process'
+import chalk from "chalk";
+import logger from "loglevel";
+import { existsSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
+import { userInfo } from "node:os";
+import { createFolderIfNotExists, ENTER } from "../utils.ts";
+import {
+  PROGRAM_FILE_EXTENSION,
+  TEST_FILE_EXTENSION,
+  WOLLOK_FILE_EXTENSION,
+} from "wollok-ts";
+import { execSync } from "node:child_process";
+import process from "node:process";
 
 export type Options = {
-  project: string,
-  name?: string | undefined,
-  noTest: boolean,
-  noCI: boolean,
-  game: boolean,
-  noGit: boolean
-}
+  project: string;
+  name?: string | undefined;
+  noTest: boolean;
+  noCI: boolean;
+  game: boolean;
+  noGit: boolean;
+};
 
-export default function (folder: string | undefined, { project: _project, name, noTest = false, noCI = false, game = false, noGit = false }: Options): void {
-  const project = join(_project, folder ?? '')
+export default function (
+  folder: string | undefined,
+  {
+    project: _project,
+    name,
+    noTest = false,
+    noCI = false,
+    game = false,
+    noGit = false,
+  }: Options,
+): void {
+  const project = join(_project, folder ?? "");
 
   // Initialization
-  if (existsSync(join(project, 'package.json'))) {
-    logger.info(chalk.yellow(chalk.bold(`🚨 There is already a project inside ${project} folder`)))
-    process.exit(1)
+  if (existsSync(join(project, "package.json"))) {
+    logger.info(
+      chalk.yellow(
+        chalk.bold(`🚨 There is already a project inside ${project} folder`),
+      ),
+    );
+    process.exit(1);
   }
-  logger.info(chalk.cyan(`Creating project in ${chalk.bold(project)}...`))
+  logger.info(chalk.cyan(`Creating project in ${chalk.bold(project)}...`));
 
   // Creating folders
-  createFolderIfNotExists(project)
-  createFolderIfNotExists(join(project, '.github'))
-  createFolderIfNotExists(join(project, '.github', 'workflows'))
+  createFolderIfNotExists(project);
+  createFolderIfNotExists(join(project, ".github"));
+  createFolderIfNotExists(join(project, ".github", "workflows"));
   if (game) {
-    createFolderIfNotExists(join(project, 'assets'))
+    createFolderIfNotExists(join(project, "assets"));
   }
 
   // Creating files
-  const exampleName = name ?? 'example'
-  logger.info(`Creating definition file ${exampleName}.${WOLLOK_FILE_EXTENSION}`)
-  writeFileSync(join(project, `${exampleName}.${WOLLOK_FILE_EXTENSION}`), wlkDefinition)
+  const exampleName = name ?? "example";
+  logger.info(
+    `Creating definition file ${exampleName}.${WOLLOK_FILE_EXTENSION}`,
+  );
+  writeFileSync(
+    join(project, `${exampleName}.${WOLLOK_FILE_EXTENSION}`),
+    wlkDefinition,
+  );
 
   if (!noTest) {
-    const testFile = `test${capitalizeFirstLetter(exampleName)}.${TEST_FILE_EXTENSION}`
-    logger.info(`Creating test file ${testFile}`)
-    writeFileSync(join(project, testFile), testDefinition(exampleName))
+    const testFile = `test${
+      capitalizeFirstLetter(exampleName)
+    }.${TEST_FILE_EXTENSION}`;
+    logger.info(`Creating test file ${testFile}`);
+    writeFileSync(join(project, testFile), testDefinition(exampleName));
   }
 
   if (game) {
-    const gameFile = `main${capitalizeFirstLetter(exampleName)}.${PROGRAM_FILE_EXTENSION}`
-    logger.info(`Creating program file ${gameFile}`)
-    writeFileSync(join(project, `${gameFile}`), gameDefinition(exampleName))
+    const gameFile = `main${
+      capitalizeFirstLetter(exampleName)
+    }.${PROGRAM_FILE_EXTENSION}`;
+    logger.info(`Creating program file ${gameFile}`);
+    writeFileSync(join(project, `${gameFile}`), gameDefinition(exampleName));
   }
 
-  logger.info('Creating package.json')
-  writeFileSync(join(project, 'package.json'), packageJsonDefinition(project, game))
+  logger.info("Creating package.json");
+  writeFileSync(
+    join(project, "package.json"),
+    packageJsonDefinition(project, game),
+  );
 
   if (!noCI) {
-    logger.info('Creating CI files')
-    writeFileSync(join(project, '.github', 'workflows', 'ci.yml'), ymlForCI)
+    logger.info("Creating CI files");
+    writeFileSync(join(project, ".github", "workflows", "ci.yml"), ymlForCI);
   }
 
-  logger.info('Creating README')
-  writeFileSync(join(project, 'README.md'), readme(exampleName))
+  logger.info("Creating README");
+  writeFileSync(join(project, "README.md"), readme(exampleName));
 
-  logger.info('Creating Gitignore')
-  writeFileSync(join(project, '.gitignore'), gitignore)
+  logger.info("Creating Gitignore");
+  writeFileSync(join(project, ".gitignore"), gitignore);
 
   if (!noGit) {
-    logger.info('Initializing Git repository')
+    logger.info("Initializing Git repository");
     try {
-      execSync('git init', { cwd: project })
+      execSync("git init", { cwd: project });
     } catch {
-      logger.error(chalk.yellow('🚨 Error initializing git repository, please check if git is installed in your system.'))
+      logger.error(
+        chalk.yellow(
+          "🚨 Error initializing git repository, please check if git is installed in your system.",
+        ),
+      );
     }
   }
 
   // Finish
-  logger.info(chalk.green('✨ Project succesfully created. Happy coding!'))
+  logger.info(chalk.green("✨ Project succesfully created. Happy coding!"));
 }
-
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 const capitalizeFirstLetter = (value: string) =>
-  value.charAt(0).toUpperCase() + value.slice(1)
+  value.charAt(0).toUpperCase() + value.slice(1);
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // COMMANDS
@@ -99,9 +132,10 @@ const wlkDefinition = `object pepita {
   method fly(minutes) {
     energy = energy - minutes * 3
   }
-}`
+}`;
 
-const testDefinition = (exampleName: string) => `import ${exampleName}.pepita
+const testDefinition = (exampleName: string) =>
+  `import ${exampleName}.pepita
 
 describe "group of tests for pepita" {
 
@@ -109,9 +143,10 @@ describe "group of tests for pepita" {
     assert.equals(100, pepita.energy())
   }
 
-}`
+}`;
 
-const gameDefinition = (exampleName: string) => `import wollok.game.*
+const gameDefinition = (exampleName: string) =>
+  `import wollok.game.*
 
 import ${exampleName}.pepita
 
@@ -129,18 +164,19 @@ program PepitaGame {
 
 	game.start()
 }
-`
+`;
 
-const packageJsonDefinition = (projectName: string, game: boolean) => `{
+const packageJsonDefinition = (projectName: string, game: boolean) =>
+  `{
   "name": "${basename(projectName)}",
   "version": "1.0.0",
-  ${game ? assetsConfiguration() : ''}"wollokVersion": "4.0.0",
+  ${game ? assetsConfiguration() : ""}"wollokVersion": "4.0.0",
   "author": "${userInfo().username}",
   "license": "ISC"
 }
-`
+`;
 
-const assetsConfiguration = () => `"resourceFolder": "assets",${ENTER}  `
+const assetsConfiguration = () => `"resourceFolder": "assets",${ENTER}  `;
 
 const ymlForCI = `name: build
 
@@ -156,7 +192,7 @@ jobs:
           chmod a+x ./wollok-ts-cli
           ./wollok-ts-cli test --skipValidations -p ./
         shell: bash
-`
+`;
 
 const readme = (exampleName: string) => `
 
@@ -164,7 +200,7 @@ const readme = (exampleName: string) => `
 
 TODO
 
-`
+`;
 
 const gitignore = `
 # Local history
@@ -172,4 +208,4 @@ const gitignore = `
 
 # Wollok Log
 *.log
-`
+`;
