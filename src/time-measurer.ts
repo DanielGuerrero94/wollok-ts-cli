@@ -1,4 +1,5 @@
 import { Logger } from 'loglevel'
+import process from "node:process";
 
 export class TimeMeasurer {
   private initialTime: number = this.now()

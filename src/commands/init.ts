@@ -1,11 +1,12 @@
-import { bold, cyan, yellow, green } from 'chalk'
+import chalk from 'chalk'
 import logger from 'loglevel'
 import { existsSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { userInfo } from 'os'
-import { ENTER, createFolderIfNotExists } from '../utils'
+import { userInfo } from 'node:os'
+import { ENTER, createFolderIfNotExists } from '../utils.ts'
 import { PROGRAM_FILE_EXTENSION, TEST_FILE_EXTENSION, WOLLOK_FILE_EXTENSION } from 'wollok-ts'
 import { execSync } from 'node:child_process'
+import process from 'node:process'
 
 export type Options = {
   project: string,
@@ -21,10 +22,10 @@ export default function (folder: string | undefined, { project: _project, name, 
 
   // Initialization
   if (existsSync(join(project, 'package.json'))) {
-    logger.info(yellow(bold(`🚨 There is already a project inside ${project} folder`)))
+    logger.info(chalk.yellow(chalk.bold(`🚨 There is already a project inside ${project} folder`)))
     process.exit(1)
   }
-  logger.info(cyan(`Creating project in ${bold(project)}...`))
+  logger.info(chalk.cyan(`Creating project in ${chalk.bold(project)}...`))
 
   // Creating folders
   createFolderIfNotExists(project)
@@ -70,12 +71,12 @@ export default function (folder: string | undefined, { project: _project, name, 
     try {
       execSync('git init', { cwd: project })
     } catch {
-      logger.error(yellow('🚨 Error initializing git repository, please check if git is installed in your system.'))
+      logger.error(chalk.yellow('🚨 Error initializing git repository, please check if git is installed in your system.'))
     }
   }
 
   // Finish
-  logger.info(green('✨ Project succesfully created. Happy coding!'))
+  logger.info(chalk.green('✨ Project succesfully created. Happy coding!'))
 }
 
 
