@@ -1,257 +1,354 @@
 /* eslint-disable no-console */
-import chalk from 'chalk'
-import { Command } from 'commander'
-import cors from 'cors'
-import express, { Express } from 'express'
-import http from 'node:http'
-import logger from 'loglevel'
-import { CompleterResult, Interface, createInterface as Repl } from 'node:readline'
-import { Server, Socket } from 'socket.io'
-import { Entity, Environment, Evaluation, Interpreter, Package, REPL, interprete, link, WRENatives as natives } from 'wollok-ts'
-import { logger as fileLogger } from '../logger.ts'
-import { TimeMeasurer } from '../time-measurer.ts'
-import { ENTER, buildEnvironmentForProject, failureDescription, getDynamicDiagram, getFQN, handleError, publicPath, replIcon, sanitizeStackTrace, serverError, successDescription, validateEnvironment, valueDescription } from '../utils.ts'
-import process from 'node:process'
+import chalk from "chalk";
+import { Command } from "commander";
+import cors from "cors";
+import express, { Express } from "express";
+import http from "node:http";
+import logger from "loglevel";
+import {
+  CompleterResult,
+  createInterface as Repl,
+  Interface,
+} from "node:readline";
+import { Server, Socket } from "socket.io";
+import {
+  Entity,
+  Environment,
+  Evaluation,
+  interprete,
+  Interpreter,
+  link,
+  Package,
+  REPL,
+  WRENatives as natives,
+} from "wollok-ts";
+import { logger as fileLogger } from "../logger.ts";
+import { TimeMeasurer } from "../time-measurer.ts";
+import {
+  buildEnvironmentForProject,
+  ENTER,
+  failureDescription,
+  getDynamicDiagram,
+  getFQN,
+  handleError,
+  publicPath,
+  replIcon,
+  sanitizeStackTrace,
+  serverError,
+  successDescription,
+  validateEnvironment,
+  valueDescription,
+} from "../utils.ts";
+import process from "node:process";
 
 // TODO:
 // - autocomplete piola
 
 export type Options = {
-  project: string
-  skipValidations: boolean,
-  darkMode: boolean,
-  host: string,
-  port: string,
-  skipDiagram: boolean,
-}
+  project: string;
+  skipValidations: boolean;
+  darkMode: boolean;
+  host: string;
+  port: string;
+  skipDiagram: boolean;
+};
 
 type DynamicDiagramClient = {
-  onReload: (interpreter: Interpreter) => void,
-  enabled: boolean,
-  app?: Express, // only for testing purposes
-  server?: http.Server, // only for testing purposes
+  onReload: (interpreter: Interpreter) => void;
+  enabled: boolean;
+  app?: Express; // only for testing purposes
+  server?: http.Server; // only for testing purposes
+};
+
+export default async function (
+  autoImportPath: string | undefined,
+  options: Options,
+): Promise<void> {
+  await replFn(autoImportPath, options);
 }
 
-export default async function (autoImportPath: string | undefined, options: Options): Promise<void> {
-  await replFn(autoImportPath, options)
-}
+const history: string[] = [];
 
-const history: string[] = []
+export async function replFn(
+  autoImportPath: string | undefined,
+  options: Options,
+): Promise<Interface> {
+  logger.info(
+    `${replIcon}  Initializing Wollok REPL ${
+      autoImportPath ? `for file ${valueDescription(autoImportPath)} ` : ""
+    }on ${valueDescription(options.project)}`,
+  );
 
-export async function replFn(autoImportPath: string | undefined, options: Options): Promise<Interface> {
-  logger.info(`${replIcon}  Initializing Wollok REPL ${autoImportPath ? `for file ${valueDescription(autoImportPath)} ` : ''}on ${valueDescription(options.project)}`)
-
-  let interpreter = await initializeInterpreter(autoImportPath, options)
-  const autoImportName = autoImportPath && interpreter.evaluation.environment.replNode().name
+  let interpreter = await initializeInterpreter(autoImportPath, options);
+  const autoImportName = autoImportPath &&
+    interpreter.evaluation.environment.replNode().name;
   const repl = Repl({
     input: process.stdin,
     output: process.stdout,
     terminal: true,
     removeHistoryDuplicates: true,
     tabSize: 2,
-    prompt: chalk.bold(`wollok${autoImportName ? ':' + autoImportName : ''}> `),
+    prompt: chalk.bold(`wollok${autoImportName ? ":" + autoImportName : ""}> `),
     completer: autocomplete,
-  })
-  let dynamicDiagramClient = await initializeClient(options, repl, interpreter)
+  });
+  let dynamicDiagramClient = await initializeClient(options, repl, interpreter);
 
-  const onReloadClient = async (activateDiagram: boolean, newInterpreter?: Interpreter) => {
-    const selectedInterpreter = newInterpreter ?? interpreter
+  const onReloadClient = async (
+    activateDiagram: boolean,
+    newInterpreter?: Interpreter,
+  ) => {
+    const selectedInterpreter = newInterpreter ?? interpreter;
     if (activateDiagram && !dynamicDiagramClient.enabled) {
-      options.skipDiagram = !activateDiagram
-      dynamicDiagramClient = await initializeClient(options, repl, selectedInterpreter)
+      options.skipDiagram = !activateDiagram;
+      dynamicDiagramClient = await initializeClient(
+        options,
+        repl,
+        selectedInterpreter,
+      );
     } else {
-      dynamicDiagramClient.onReload(selectedInterpreter)
-      logger.info(successDescription('Dynamic diagram reloaded at ' + chalk.bold(`http://${options.host}:${options.port}`)))
-      repl.prompt()
+      dynamicDiagramClient.onReload(selectedInterpreter);
+      logger.info(
+        successDescription(
+          "Dynamic diagram reloaded at " +
+            chalk.bold(`http://${options.host}:${options.port}`),
+        ),
+      );
+      repl.prompt();
     }
-  }
+  };
 
   const onReloadInterpreter = (newInterpreter: Interpreter, rerun: boolean) => {
-    interpreter = newInterpreter
-    const previousCommands = [...history]
-    history.length = 0
+    interpreter = newInterpreter;
+    const previousCommands = [...history];
+    history.length = 0;
     if (rerun) {
-      previousCommands.forEach(command => {
-        repl.prompt()
-        repl.write(command + ENTER)
-      })
+      previousCommands.forEach((command) => {
+        repl.prompt();
+        repl.write(command + ENTER);
+      });
     }
-    repl.prompt()
-  }
+    repl.prompt();
+  };
 
-  const commandHandler = defineCommands(autoImportPath, options, onReloadClient, onReloadInterpreter)
+  const commandHandler = defineCommands(
+    autoImportPath,
+    options,
+    onReloadClient,
+    onReloadInterpreter,
+  );
 
   repl
-    .on('close', () => console.log(''))
-    .on('line', line => {
-      line = line.trim()
+    .on("close", () => console.log(""))
+    .on("line", (line) => {
+      line = line.trim();
 
       if (line.length) {
-        if (line.startsWith(':')) commandHandler.parse(line.split(' '), { from: 'user' })
-        else {
-          history.push(line)
-          console.log(interpreteLine(interpreter, line))
-          dynamicDiagramClient.onReload(interpreter)
+        if (line.startsWith(":")) {
+          commandHandler.parse(line.split(" "), { from: "user" });
+        } else {
+          history.push(line);
+          console.log(interpreteLine(interpreter, line));
+          dynamicDiagramClient.onReload(interpreter);
         }
       }
-      repl.prompt()
-    })
+      repl.prompt();
+    });
 
-  repl.prompt()
-  return repl
+  repl.prompt();
+  return repl;
 }
 
 export function interpreteLine(interpreter: Interpreter, line: string): string {
-  const { errored, result, error } = interprete(interpreter, line)
-  return errored ? failureDescription(result, error) : successDescription(result)
+  const { errored, result, error } = interprete(interpreter, line);
+  return errored
+    ? failureDescription(result, error)
+    : successDescription(result);
 }
 
-export async function initializeInterpreter(autoImportPath: string | undefined, { project, skipValidations }: Options): Promise<Interpreter> {
-  let environment: Environment
-  const timeMeasurer = new TimeMeasurer()
+export async function initializeInterpreter(
+  autoImportPath: string | undefined,
+  { project, skipValidations }: Options,
+): Promise<Interpreter> {
+  let environment: Environment;
+  const timeMeasurer = new TimeMeasurer();
 
   try {
-    environment = await buildEnvironmentForProject(project)
-    validateEnvironment(environment, skipValidations)
+    environment = await buildEnvironmentForProject(project);
+    validateEnvironment(environment, skipValidations);
 
     if (autoImportPath) {
-      const fqn = getFQN(project, autoImportPath)
-      const entity = environment.getNodeOrUndefinedByFQN<Entity>(fqn)
+      const fqn = getFQN(project, autoImportPath);
+      const entity = environment.getNodeOrUndefinedByFQN<Entity>(fqn);
 
       if (entity && entity.is(Package)) {
-        environment.scope.register([REPL, entity]) // Register the auto-imported package as REPL package
+        environment.scope.register([REPL, entity]); // Register the auto-imported package as REPL package
       } else {
-        console.log(failureDescription(`File ${valueDescription(autoImportPath)} doesn't exist or is outside of project ${project}!`))
-        process.exit(11)
+        console.log(
+          failureDescription(
+            `File ${
+              valueDescription(autoImportPath)
+            } doesn't exist or is outside of project ${project}!`,
+          ),
+        );
+        process.exit(11);
       }
     } else {
       // Create a new REPL package
-      const replPackage = new Package({ name: REPL })
-      environment = link([replPackage], environment)
+      const replPackage = new Package({ name: REPL });
+      environment = link([replPackage], environment);
     }
-    return new Interpreter(Evaluation.build(environment, natives))
+    return new Interpreter(Evaluation.build(environment, natives));
   } catch (error: any) {
-    handleError(error)
-    fileLogger.info({ message: `${replIcon} REPL execution - build failed for ${project}`, timeElapsed: timeMeasurer.elapsedTime(), ok: false, error: sanitizeStackTrace(error) })
-    return process.exit(12)
+    handleError(error);
+    fileLogger.info({
+      message: `${replIcon} REPL execution - build failed for ${project}`,
+      timeElapsed: timeMeasurer.elapsedTime(),
+      ok: false,
+      error: sanitizeStackTrace(error),
+    });
+    return process.exit(12);
   }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // COMMANDS
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-function defineCommands(autoImportPath: string | undefined, options: Options, reloadClient: (activateDiagram: boolean, interpreter?: Interpreter) => Promise<void>, setInterpreter: (interpreter: Interpreter, rerun: boolean) => void): Command {
+function defineCommands(
+  autoImportPath: string | undefined,
+  options: Options,
+  reloadClient: (
+    activateDiagram: boolean,
+    interpreter?: Interpreter,
+  ) => Promise<void>,
+  setInterpreter: (interpreter: Interpreter, rerun: boolean) => void,
+): Command {
   const reload = (rerun = false) => async () => {
-    logger.info(successDescription('Reloading environment'))
-    const interpreter = await initializeInterpreter(autoImportPath, options)
-    setInterpreter(interpreter, rerun)
-    reloadClient(options.skipDiagram, interpreter)
-  }
+    logger.info(successDescription("Reloading environment"));
+    const interpreter = await initializeInterpreter(autoImportPath, options);
+    setInterpreter(interpreter, rerun);
+    reloadClient(options.skipDiagram, interpreter);
+  };
 
-  const commandHandler = new Command('Write a Wollok sentence or command to evaluate')
-    .usage(' ')
+  const commandHandler = new Command(
+    "Write a Wollok sentence or command to evaluate",
+  )
+    .usage(" ")
     .allowUnknownOption()
     .helpOption(false)
-    .addHelpText('afterAll', ' ')
-    .action(() => commandHandler.outputHelp())
+    .addHelpText("afterAll", " ")
+    .action(() => commandHandler.outputHelp());
 
-  commandHandler.command(':quit')
-    .alias(':q')
-    .alias(':exit')
-    .description('Quit Wollok REPL')
+  commandHandler.command(":quit")
+    .alias(":q")
+    .alias(":exit")
+    .description("Quit Wollok REPL")
     .allowUnknownOption()
-    .action(() => process.exit(0))
+    .action(() => process.exit(0));
 
-  commandHandler.command(':reload')
-    .alias(':r')
-    .description('Reloads all currently imported packages and resets evaluation state')
+  commandHandler.command(":reload")
+    .alias(":r")
+    .description(
+      "Reloads all currently imported packages and resets evaluation state",
+    )
     .allowUnknownOption()
-    .action(reload())
+    .action(reload());
 
-  commandHandler.command(':rerun')
-    .alias(':rr')
-    .description('Same as "reload" but additionaly reruns all commands written since last reload')
+  commandHandler.command(":rerun")
+    .alias(":rr")
+    .description(
+      'Same as "reload" but additionaly reruns all commands written since last reload',
+    )
     .allowUnknownOption()
-    .action(reload(true))
+    .action(reload(true));
 
-  commandHandler.command(':diagram')
-    .alias(':d')
-    .description('Opens Dynamic Diagram')
+  commandHandler.command(":diagram")
+    .alias(":d")
+    .description("Opens Dynamic Diagram")
     .allowUnknownOption()
     .action(async () => {
-      await reloadClient(true)
-    })
+      await reloadClient(true);
+    });
 
-  commandHandler.command(':help')
-    .alias(':h')
-    .description('Show Wollok REPL help')
+  commandHandler.command(":help")
+    .alias(":h")
+    .description("Show Wollok REPL help")
     .allowUnknownOption()
-    .action(() => commandHandler.outputHelp())
+    .action(() => commandHandler.outputHelp());
 
-  return commandHandler
+  return commandHandler;
 }
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // EVALUATION
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 function autocomplete(input: string): CompleterResult {
-  const completions = ['fafafa', 'fefefe', 'fofofo']
-  const hits = completions.filter((c) => c.startsWith(input))
+  const completions = ["fafafa", "fefefe", "fofofo"];
+  const hits = completions.filter((c) => c.startsWith(input));
   // Show all completions if none found
-  return [hits.length ? hits : completions, input]
+  return [hits.length ? hits : completions, input];
 }
-
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // SERVER/CLIENT
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-export function initializeClient(options: Options, repl: Interface, interpreter: Interpreter): DynamicDiagramClient {
+export function initializeClient(
+  options: Options,
+  repl: Interface,
+  interpreter: Interpreter,
+): DynamicDiagramClient {
   if (options.skipDiagram) {
     return {
       enabled: false,
-      onReload: (_interpreter: Interpreter) => {}
-    }
+      onReload: (_interpreter: Interpreter) => {},
+    };
   }
-  const app = express()
-  const server = http.createServer(app)
+  const app = express();
+  const server = http.createServer(app);
 
-  server.addListener('error', serverError)
+  server.addListener("error", serverError);
 
-  const io = new Server(server)
+  const io = new Server(server);
 
-  io.on('connection', (socket: Socket) => {
-    logger.debug(successDescription('Connected to Dynamic diagram'))
-    socket.on('disconnect', () => { logger.debug(failureDescription('Dynamic diagram closed')) })
-  })
+  io.on("connection", (socket: Socket) => {
+    logger.debug(successDescription("Connected to Dynamic diagram"));
+    socket.on("disconnect", () => {
+      logger.debug(failureDescription("Dynamic diagram closed"));
+    });
+  });
   const connectionListener = (interpreter: Interpreter) => (socket: Socket) => {
-    socket.emit('initDiagram', options)
-    socket.emit('updateDiagram', getDynamicDiagram(interpreter))
-  }
-  let currentConnectionListener = connectionListener(interpreter)
-  io.on('connection', currentConnectionListener)
+    socket.emit("initDiagram", options);
+    socket.emit("updateDiagram", getDynamicDiagram(interpreter));
+  };
+  let currentConnectionListener = connectionListener(interpreter);
+  io.on("connection", currentConnectionListener);
 
   app.use(
-    cors({ allowedHeaders: '*' }),
-    express.static(publicPath('diagram'), { maxAge: '1d' }),
-  )
-  const host = options.host
-  server.listen(parseInt(options.port), host)
-  server.addListener('listening', () => {
-    logger.info(successDescription('Dynamic diagram available at: ' + chalk.bold(`http://${host}:${options.port}`)))
-    repl.prompt()
-  })
+    cors({ allowedHeaders: "*" }),
+    express.static(publicPath("diagram"), { maxAge: "1d" }),
+  );
+  const host = options.host;
+  server.listen(parseInt(options.port), host);
+  server.addListener("listening", () => {
+    logger.info(
+      successDescription(
+        "Dynamic diagram available at: " +
+          chalk.bold(`http://${host}:${options.port}`),
+      ),
+    );
+    repl.prompt();
+  });
 
   return {
     onReload: (interpreter: Interpreter) => {
-      io.off('connection', currentConnectionListener)
-      currentConnectionListener = connectionListener(interpreter)
-      io.on('connection', currentConnectionListener)
+      io.off("connection", currentConnectionListener);
+      currentConnectionListener = connectionListener(interpreter);
+      io.on("connection", currentConnectionListener);
 
-      io.emit('updateDiagram', getDynamicDiagram(interpreter))
+      io.emit("updateDiagram", getDynamicDiagram(interpreter));
     },
     enabled: true,
     app,
     server,
-  }
+  };
 }
