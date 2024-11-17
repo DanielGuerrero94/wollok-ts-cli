@@ -1,16 +1,17 @@
-import { bold } from 'chalk'
+import chalk from 'chalk'
 import cors from 'cors'
 import express from 'express'
-import fs, { Dirent, existsSync } from 'fs'
-import http from 'http'
+import fs, { Dirent, existsSync } from 'node:fs'
+import http from 'node:http'
 import logger from 'loglevel'
-import { join, relative } from 'path'
+import { join, relative } from 'node:path'
 import { Server, Socket } from 'socket.io'
 import { Asset, boardState, buildKeyPressEvent, queueEvent, SoundState, soundState, VisualState, visualState } from 'wollok-web-tools'
 import { Environment, GAME_MODULE, interpret, Interpreter, Name, Package, RuntimeObject, WollokException, WRENatives as natives } from 'wollok-ts'
-import { logger as fileLogger } from '../logger'
-import { buildEnvironmentForProject, buildEnvironmentIcon, ENTER, failureDescription, folderIcon, gameIcon, getDynamicDiagram, handleError, isValidAsset, isValidImage, isValidSound, programIcon, publicPath, readPackageProperties, sanitizeStackTrace, serverError, successDescription, validateEnvironment, valueDescription } from '../utils'
-import { DummyProfiler, EventProfiler, TimeMeasurer } from './../time-measurer'
+import { logger as fileLogger } from '../logger.ts'
+import { buildEnvironmentForProject, buildEnvironmentIcon, ENTER, failureDescription, folderIcon, gameIcon, getDynamicDiagram, handleError, isValidAsset, isValidImage, isValidSound, programIcon, publicPath, readPackageProperties, sanitizeStackTrace, serverError, successDescription, validateEnvironment, valueDescription } from '../utils.ts'
+import { DummyProfiler, EventProfiler, TimeMeasurer } from './../time-measurer.ts'
+import process from 'node:process'
 
 const { time, timeEnd } = console
 
@@ -105,12 +106,12 @@ export const initializeGameClient = ({ project, assets, host, port, game }: Opti
   const currentPort = gamePort(port!)
   server.listen(parseInt(currentPort), currentHost)
 
-  logger.info(successDescription('Game available at: ' + bold(`http://${currentHost}:${currentPort}`)))
+  logger.info(successDescription('Game available at: ' + chalk.bold(`http://${currentHost}:${currentPort}`)))
   server.listen(currentPort)
   return io
 }
 
-export async function initializeDynamicDiagram(programPackage: Package, options: Options, interpreter: Interpreter): Promise<DynamicDiagramClient> {
+export function initializeDynamicDiagram(programPackage: Package, options: Options, interpreter: Interpreter): DynamicDiagramClient {
   if (!options.startDiagram || !options.game) return { onReload: () => { } }
 
   const app = express()
@@ -139,7 +140,7 @@ export async function initializeDynamicDiagram(programPackage: Package, options:
   const currentPort = dynamicDiagramPort(options.port!)
   server.listen(parseInt(currentPort), currentHost)
   server.addListener('listening', () => {
-    logger.info(successDescription('Dynamic diagram available at: ' + bold(`http://${currentHost}:${currentPort}`)))
+    logger.info(successDescription('Dynamic diagram available at: ' + chalk.bold(`http://${currentHost}:${currentPort}`)))
   })
 
   return {

@@ -1,12 +1,13 @@
-import { blue, bold, green, italic, red, yellow, yellowBright } from 'chalk'
-import fs, { existsSync, mkdirSync } from 'fs'
-import { readFile } from 'fs/promises'
+import chalk from 'chalk'
+import fs, { existsSync, mkdirSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import globby from 'globby'
 import logger from 'loglevel'
-import path, { join } from 'path'
+import path, { join } from 'node:path'
 import { getDataDiagram, VALID_IMAGE_EXTENSIONS, VALID_SOUND_EXTENSIONS } from 'wollok-web-tools'
 import { buildEnvironment, Environment, getDynamicDiagramData, Interpreter, Package, Problem, validate, WOLLOK_EXTRA_STACK_TRACE_HEADER } from 'wollok-ts'
 import { ElementDefinition } from 'cytoscape'
+import process from 'node:process'
 
 const { time, timeEnd } = console
 
@@ -82,8 +83,8 @@ export const validateEnvironment = (environment: Environment, skipValidations: b
 }
 
 export const handleError = (error: any): void => {
-  logger.error(red(bold('💥 Uh-oh... Unexpected Error!')))
-  logger.error(red(error.message.replaceAll(WOLLOK_EXTRA_STACK_TRACE_HEADER, '')))
+  logger.error(chalk.red(chalk.bold('💥 Uh-oh... Unexpected Error!')))
+  logger.error(chalk.red(error.message.replaceAll(WOLLOK_EXTRA_STACK_TRACE_HEADER, '')))
   logger.debug(failureDescription('ℹ️ Stack trace:', error))
 }
 
@@ -91,10 +92,10 @@ export const handleError = (error: any): void => {
 // PRINTING
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-export const valueDescription = (val: any): string => italic(blue(val))
+export const valueDescription = (val: any): string => chalk.italic(chalk.blue(val))
 
 export const successDescription = (description: string): string =>
-  green(`${bold('✓')} ${description}`)
+  chalk.green(`${chalk.bold('✓')} ${description}`)
 
 export const sanitizeStackTrace = (e?: Error): string[] => {
   const indexOfTsStack = e?.stack?.indexOf(WOLLOK_EXTRA_STACK_TRACE_HEADER)
@@ -111,12 +112,12 @@ export const sanitizeStackTrace = (e?: Error): string[] => {
 export const failureDescription = (description: string, e?: Error): string => {
   const stack = sanitizeStackTrace(e).join('\n  ')
   const sanitizedStackTrace = stack ? '\n  ' + stack : ''
-  return red(`${bold('✗')} ${description}${sanitizedStackTrace}`)
+  return chalk.red(`${chalk.bold('✗')} ${description}${sanitizedStackTrace}`)
 }
 
 export const problemDescription = (problem: Problem): string => {
-  const color = problem.level === 'warning' ? yellowBright : red
-  const header = bold(`[${problem.level.toUpperCase()}]`)
+  const color = problem.level === 'warning' ? chalk.yellowBright : chalk.red
+  const header = chalk.bold(`[${problem.level.toUpperCase()}]`)
   return color(`${header}: ${problem.code} at ${problem.node?.sourceInfo ?? 'unknown'}`)
 }
 
@@ -157,11 +158,11 @@ export function isREPLConstant(environment: Environment, localName: string): boo
 export const serverError = ({ port, code }: { port: string, code: string }): void => {
   logger.info('')
   if (code === 'EADDRINUSE') {
-    logger.info(yellow(bold(`⚡ We couldn't start dynamic diagram at port ${port}, because it is already in use. ⚡`)))
+    logger.info(chalk.yellow(chalk.bold(`⚡ We couldn't start dynamic diagram at port ${port}, because it is already in use. ⚡`)))
     // eslint-disable-next-line @stylistic/ts/quotes
-    logger.info(yellow(`Please make sure you don't have another REPL session running in another terminal. \nIf you want to start another instance, you can use "--port xxxx" option, where xxxx should be any available port.`))
+    logger.info(chalk.yellow(`Please make sure you don't have another REPL session running in another terminal. \nIf you want to start another instance, you can use "--port xxxx" option, where xxxx should be any available port.`))
   } else {
-    logger.info(yellow(bold(`⚡ REPL couldn't be started at port ${port}, error code ["${code}]. ⚡`)))
+    logger.info(chalk.yellow(chalk.bold(`⚡ REPL couldn't be started at port ${port}, error code ["${code}]. ⚡`)))
   }
   process.exit(13)
 }

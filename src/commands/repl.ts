@@ -1,16 +1,17 @@
 /* eslint-disable no-console */
-import { bold } from 'chalk'
+import chalk from 'chalk'
 import { Command } from 'commander'
 import cors from 'cors'
 import express, { Express } from 'express'
-import http from 'http'
+import http from 'node:http'
 import logger from 'loglevel'
-import { CompleterResult, Interface, createInterface as Repl } from 'readline'
+import { CompleterResult, Interface, createInterface as Repl } from 'node:readline'
 import { Server, Socket } from 'socket.io'
 import { Entity, Environment, Evaluation, Interpreter, Package, REPL, interprete, link, WRENatives as natives } from 'wollok-ts'
-import { logger as fileLogger } from '../logger'
-import { TimeMeasurer } from '../time-measurer'
-import { ENTER, buildEnvironmentForProject, failureDescription, getDynamicDiagram, getFQN, handleError, publicPath, replIcon, sanitizeStackTrace, serverError, successDescription, validateEnvironment, valueDescription } from '../utils'
+import { logger as fileLogger } from '../logger.ts'
+import { TimeMeasurer } from '../time-measurer.ts'
+import { ENTER, buildEnvironmentForProject, failureDescription, getDynamicDiagram, getFQN, handleError, publicPath, replIcon, sanitizeStackTrace, serverError, successDescription, validateEnvironment, valueDescription } from '../utils.ts'
+import process from 'node:process'
 
 // TODO:
 // - autocomplete piola
@@ -32,7 +33,7 @@ type DynamicDiagramClient = {
 }
 
 export default async function (autoImportPath: string | undefined, options: Options): Promise<void> {
-  replFn(autoImportPath, options)
+  await replFn(autoImportPath, options)
 }
 
 const history: string[] = []
@@ -48,7 +49,7 @@ export async function replFn(autoImportPath: string | undefined, options: Option
     terminal: true,
     removeHistoryDuplicates: true,
     tabSize: 2,
-    prompt: bold(`wollok${autoImportName ? ':' + autoImportName : ''}> `),
+    prompt: chalk.bold(`wollok${autoImportName ? ':' + autoImportName : ''}> `),
     completer: autocomplete,
   })
   let dynamicDiagramClient = await initializeClient(options, repl, interpreter)
@@ -60,7 +61,7 @@ export async function replFn(autoImportPath: string | undefined, options: Option
       dynamicDiagramClient = await initializeClient(options, repl, selectedInterpreter)
     } else {
       dynamicDiagramClient.onReload(selectedInterpreter)
-      logger.info(successDescription('Dynamic diagram reloaded at ' + bold(`http://${options.host}:${options.port}`)))
+      logger.info(successDescription('Dynamic diagram reloaded at ' + chalk.bold(`http://${options.host}:${options.port}`)))
       repl.prompt()
     }
   }
@@ -178,7 +179,7 @@ function defineCommands(autoImportPath: string | undefined, options: Options, re
     .description('Opens Dynamic Diagram')
     .allowUnknownOption()
     .action(async () => {
-      reloadClient(true)
+      await reloadClient(true)
     })
 
   commandHandler.command(':help')
@@ -193,7 +194,7 @@ function defineCommands(autoImportPath: string | undefined, options: Options, re
 // EVALUATION
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-async function autocomplete(input: string): Promise<CompleterResult> {
+function autocomplete(input: string): CompleterResult {
   const completions = ['fafafa', 'fefefe', 'fofofo']
   const hits = completions.filter((c) => c.startsWith(input))
   // Show all completions if none found
@@ -205,9 +206,12 @@ async function autocomplete(input: string): Promise<CompleterResult> {
 // SERVER/CLIENT
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-export async function initializeClient(options: Options, repl: Interface, interpreter: Interpreter): Promise<DynamicDiagramClient> {
+export function initializeClient(options: Options, repl: Interface, interpreter: Interpreter): DynamicDiagramClient {
   if (options.skipDiagram) {
-    return { onReload: (_interpreter: Interpreter) => {}, enabled: false }
+    return {
+      enabled: false,
+      onReload: (_interpreter: Interpreter) => {}
+    }
   }
   const app = express()
   const server = http.createServer(app)
@@ -234,7 +238,7 @@ export async function initializeClient(options: Options, repl: Interface, interp
   const host = options.host
   server.listen(parseInt(options.port), host)
   server.addListener('listening', () => {
-    logger.info(successDescription('Dynamic diagram available at: ' + bold(`http://${host}:${options.port}`)))
+    logger.info(successDescription('Dynamic diagram available at: ' + chalk.bold(`http://${host}:${options.port}`)))
     repl.prompt()
   })
 

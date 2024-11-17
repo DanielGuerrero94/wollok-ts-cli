@@ -1,11 +1,12 @@
-import { bold, red } from 'chalk'
-import { time, timeEnd } from 'console'
+import chalk from 'chalk'
+import { time, timeEnd } from 'node:console'
 import logger from 'loglevel'
 import { Entity, Environment, Node, Test, is, match, when, WRENatives as natives, interpret, Describe } from 'wollok-ts'
-import { buildEnvironmentForProject, failureDescription, successDescription, valueDescription, validateEnvironment, handleError, ENTER, sanitizeStackTrace, buildEnvironmentIcon, testIcon } from '../utils'
-import { logger as fileLogger } from '../logger'
-import { TimeMeasurer } from '../time-measurer'
+import { buildEnvironmentForProject, failureDescription, successDescription, valueDescription, validateEnvironment, handleError, ENTER, sanitizeStackTrace, buildEnvironmentIcon, testIcon } from '../utils.ts'
+import { logger as fileLogger } from '../logger.ts'
+import { TimeMeasurer } from '../time-measurer.ts'
 import { Package } from 'wollok-ts'
+import process from 'node:process'
 
 const { log } = console
 
@@ -46,7 +47,7 @@ export function getTarget(environment: Environment, filter: string | undefined, 
     return onlyTarget ? [onlyTarget] : possibleTargets.filter(testMatches(filterTest))
   } catch(e: any){
     if(e instanceof TestSearchMissError){
-      logger.error(red(bold(e.message)))
+      logger.error(chalk.red(chalk.bold(e.message)))
       return []
     }
     throw e
@@ -134,7 +135,7 @@ export default async function (filter: string | undefined, options: Options): Pr
 
     failures.forEach(([test, error]) => {
       log()
-      logger.error(failureDescription(bold(test.fullyQualifiedName), error))
+      logger.error(failureDescription(chalk.bold(test.fullyQualifiedName), error))
     })
 
     const failuresForLogging = failures.map(([test, error]) => ({

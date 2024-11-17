@@ -1,18 +1,18 @@
-#!/usr/bin/env node
 import { Command } from 'commander'
-import repl from './commands/repl'
-import run from './commands/run'
-import test from './commands/test'
-import init from './commands/init'
+import repl from './commands/repl.ts'
+import run from './commands/run.ts'
+import test from './commands/test.ts'
+import init from './commands/init.ts'
 import logger from 'loglevel'
-import { version } from '../package.json'
-import { cyan } from 'chalk'
+import pkg from '../package.json' with { type: "json" };
+import chalk from 'chalk'
+import process from 'node:process'
 
 const program = new Command()
   .name('wollok')
   .description('Wollok Language command line interpreter tool')
-  .version(cyan(version))
-  .hook('preAction', (thisCommand, actionCommand) => {
+  .version(chalk.cyan(pkg?.version))
+  .hook('preAction', (_thisCommand, actionCommand) => {
     actionCommand.opts().verbose ? logger.setLevel('DEBUG') : logger.setLevel('INFO')
   })
 
