@@ -7,6 +7,7 @@ import http from 'http'
 import logger from 'loglevel'
 import { CompleterResult, Interface, createInterface as Repl } from 'readline'
 import { Server, Socket } from 'socket.io'
+import { writeFile } from 'fs/promises'
 import { Entity, Environment, Evaluation, Interpreter, Package, REPL, interprete, link, WRENatives as natives } from 'wollok-ts'
 import { logger as fileLogger } from '../logger'
 import { TimeMeasurer } from '../time-measurer'
@@ -78,7 +79,25 @@ export async function replFn(autoImportPath: string | undefined, options: Option
     repl.prompt()
   }
 
-  const commandHandler = defineCommands(autoImportPath, options, onReloadClient, onReloadInterpreter)
+  const onSave = async (filePath: string) => {
+    if (!filePath) {
+      logger.info(failureDescription("Failed to save session without a name."))
+      repl.prompt()
+      return
+    }
+
+    if (!filePath.endsWith(".wlk")) filePath += ".wlk"
+
+    try {
+      await writeFile(filePath, history.join("\n"))
+      logger.info(successDescription('Session saved to: ' + bold(filePath)))
+    } catch (error) {
+      logger.info(failureDescription('Failed to save: ' + bold(filePath)))
+    }
+    repl.prompt()
+  }
+
+  const commandHandler = defineCommands(autoImportPath, options, onReloadClient, onReloadInterpreter, onSave)
 
   repl
     .on('close', () => console.log(''))
@@ -139,7 +158,7 @@ export async function initializeInterpreter(autoImportPath: string | undefined, 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // COMMANDS
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-function defineCommands(autoImportPath: string | undefined, options: Options, reloadClient: (activateDiagram: boolean, interpreter?: Interpreter) => Promise<void>, setInterpreter: (interpreter: Interpreter, rerun: boolean) => void): Command {
+function defineCommands(autoImportPath: string | undefined, options: Options, reloadClient: (activateDiagram: boolean, interpreter?: Interpreter) => Promise<void>, setInterpreter: (interpreter: Interpreter, rerun: boolean) => void, onSave: (filePath: string) => Promise<void>): Command {
   const reload = (rerun = false) => async () => {
     logger.info(successDescription('Reloading environment'))
     const interpreter = await initializeInterpreter(autoImportPath, options)
@@ -160,6 +179,12 @@ function defineCommands(autoImportPath: string | undefined, options: Options, re
     .description('Quit Wollok REPL')
     .allowUnknownOption()
     .action(() => process.exit(0))
+
+  commandHandler.command(':save')
+    .alias(':s')
+    .description('Save REPL session to file')
+    .argument('[filePath]', 'relative filePath')
+    .action(onSave)
 
   commandHandler.command(':reload')
     .alias(':r')
