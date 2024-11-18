@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander'
-import repl from './commands/repl'
+import repl from './commands/repl/repl'
 import run from './commands/run'
 import test from './commands/test'
 import init from './commands/init'

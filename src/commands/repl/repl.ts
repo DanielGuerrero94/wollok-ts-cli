@@ -1,35 +1,14 @@
 /* eslint-disable no-console */
 import { bold } from 'chalk'
 import { Command } from 'commander'
-import cors from 'cors'
-import express, { Express } from 'express'
-import http from 'http'
 import logger from 'loglevel'
-import { CompleterResult, Interface, createInterface as Repl } from 'readline'
-import { Server, Socket } from 'socket.io'
+import { Interface, createInterface as Repl } from 'readline'
 import { Entity, Environment, Evaluation, Interpreter, Package, REPL, interprete, link, WRENatives as natives } from 'wollok-ts'
-import { logger as fileLogger } from '../logger'
-import { TimeMeasurer } from '../time-measurer'
-import { ENTER, buildEnvironmentForProject, failureDescription, getDynamicDiagram, getFQN, handleError, publicPath, replIcon, sanitizeStackTrace, serverError, successDescription, validateEnvironment, valueDescription } from '../utils'
-
-// TODO:
-// - autocomplete piola
-
-export type Options = {
-  project: string
-  skipValidations: boolean,
-  darkMode: boolean,
-  host: string,
-  port: string,
-  skipDiagram: boolean,
-}
-
-type DynamicDiagramClient = {
-  onReload: (interpreter: Interpreter) => void,
-  enabled: boolean,
-  app?: Express, // only for testing purposes
-  server?: http.Server, // only for testing purposes
-}
+import { logger as fileLogger } from '../../logger'
+import { TimeMeasurer } from '../../time-measurer'
+import { ENTER, buildEnvironmentForProject, failureDescription, getFQN, handleError, replIcon, sanitizeStackTrace, successDescription, validateEnvironment, valueDescription } from '../../utils'
+import { initializeClient, Options } from './diagram'
+import { autocomplete } from './autocomplete'
 
 export default async function (autoImportPath: string | undefined, options: Options): Promise<void> {
   replFn(autoImportPath, options)
@@ -80,13 +59,42 @@ export async function replFn(autoImportPath: string | undefined, options: Option
 
   const commandHandler = defineCommands(autoImportPath, options, onReloadClient, onReloadInterpreter)
 
+  const multilineState: { history: string[], brackets: string[], finished: () => boolean} = {
+    history: [],
+    brackets: [],
+    finished: () => multilineState.brackets.length === 0,
+  }
+
+  const multilineHandler = (line: string): string[] => {
+    multilineState.history.push(line)
+    if (line.endsWith('{')) multilineState.brackets.push('{')
+    if (line.endsWith('}')) multilineState.brackets.pop()
+    const prompt = '... '
+    repl.setPrompt(prompt + '  '.repeat(multilineState.brackets.length))
+    return multilineState.finished() ? multilineState.history : []
+  }
+
   repl
     .on('close', () => console.log(''))
     .on('line', line => {
       line = line.trim()
 
+      const isMultiline = !multilineState.finished() || line.endsWith('{')
+
       if (line.length) {
         if (line.startsWith(':')) commandHandler.parse(line.split(' '), { from: 'user' })
+        else if (isMultiline) {
+          const multiline = multilineHandler(line)
+          if (multiline.length) {
+            const oneLine = multiline.join('\n')
+            history.push(oneLine)
+            console.log(interpreteLine(interpreter, oneLine))
+            dynamicDiagramClient.onReload(interpreter)
+            repl.setPrompt(bold(`wollok${autoImportName ? ':' + autoImportName : ''}> `))
+            multilineState.brackets = []
+            multilineState.history = []
+          }
+        }
         else {
           history.push(line)
           console.log(interpreteLine(interpreter, line))
@@ -189,65 +197,4 @@ function defineCommands(autoImportPath: string | undefined, options: Options, re
 
   return commandHandler
 }
-// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-// EVALUATION
-// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-async function autocomplete(input: string): Promise<CompleterResult> {
-  const completions = ['fafafa', 'fefefe', 'fofofo']
-  const hits = completions.filter((c) => c.startsWith(input))
-  // Show all completions if none found
-  return [hits.length ? hits : completions, input]
-}
-
-
-// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-// SERVER/CLIENT
-// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-
-export async function initializeClient(options: Options, repl: Interface, interpreter: Interpreter): Promise<DynamicDiagramClient> {
-  if (options.skipDiagram) {
-    return { onReload: (_interpreter: Interpreter) => {}, enabled: false }
-  }
-  const app = express()
-  const server = http.createServer(app)
-
-  server.addListener('error', serverError)
-
-  const io = new Server(server)
-
-  io.on('connection', (socket: Socket) => {
-    logger.debug(successDescription('Connected to Dynamic diagram'))
-    socket.on('disconnect', () => { logger.debug(failureDescription('Dynamic diagram closed')) })
-  })
-  const connectionListener = (interpreter: Interpreter) => (socket: Socket) => {
-    socket.emit('initDiagram', options)
-    socket.emit('updateDiagram', getDynamicDiagram(interpreter))
-  }
-  let currentConnectionListener = connectionListener(interpreter)
-  io.on('connection', currentConnectionListener)
-
-  app.use(
-    cors({ allowedHeaders: '*' }),
-    express.static(publicPath('diagram'), { maxAge: '1d' }),
-  )
-  const host = options.host
-  server.listen(parseInt(options.port), host)
-  server.addListener('listening', () => {
-    logger.info(successDescription('Dynamic diagram available at: ' + bold(`http://${host}:${options.port}`)))
-    repl.prompt()
-  })
-
-  return {
-    onReload: (interpreter: Interpreter) => {
-      io.off('connection', currentConnectionListener)
-      currentConnectionListener = connectionListener(interpreter)
-      io.on('connection', currentConnectionListener)
-
-      io.emit('updateDiagram', getDynamicDiagram(interpreter))
-    },
-    enabled: true,
-    app,
-    server,
-  }
-}
